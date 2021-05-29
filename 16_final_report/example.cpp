@@ -76,6 +76,8 @@ int main(int argc, char** argv) {
   vector<float> subsubC(N*N/size/size, 0);
   matmul(subA, subB, subC, N, size, 0);
 
+  vector<float> recv(N*N/size);
+
   for (int i=0; i<N; i++) {
     for (int j=0; j<N; j++) {
       A[N*i+j] = drand48();
@@ -112,8 +114,10 @@ int main(int argc, char** argv) {
     comp_time += chrono::duration<double>(toc - tic).count();
     MPI_Request request[2];
     MPI_Isend(&subB[0], N*N/size, MPI_FLOAT, send_to, 0, MPI_COMM_WORLD, &request[0]);
-    MPI_Irecv(&subB[0], N*N/size, MPI_FLOAT, recv_from, 0, MPI_COMM_WORLD, &request[1]);
+    MPI_Irecv(&recv[0], N*N/size, MPI_FLOAT, recv_from, 0, MPI_COMM_WORLD, &request[1]);
     MPI_Waitall(2, request, MPI_STATUS_IGNORE);
+    for (int i=0; i<N*N/size; i++)
+      subB[i] = recv[i];
     tic = chrono::steady_clock::now();
     comm_time += chrono::duration<double>(tic - toc).count();
   }
