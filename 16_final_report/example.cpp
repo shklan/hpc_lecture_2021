@@ -5,14 +5,15 @@
 #include <chrono>
 using namespace std;
 
-void matmul(vector<float> &A, vector<float> &B, vector<float> &C, int N, int size, int offset) {
+void matmul(vector<float> &A, vector<float> &B, vector<float> &C, int N, int size) {
   const int m = N/size, n = N, k = N;
 // simple cache blocking
 #pragma omp parallel for
   for (int i=0; i<N/size; i++)
     for (int k=0; k<N; k++)
-      for (int j=0; j<N/size; j++)
-        C[N*i+j+offset] += A[N*i+k] * B[N/size*k+j];
+      for (int j=0; j<N/size; j++) {
+        C[N/size*i+j] += A[N*i+k] * B[N/size*k+j];
+      }
 //  subC[N*i+j+offset] += subA[N*i+k] * subB[N/size*k+j];
 //#pragma omp parallel for collapse(2)
 //  for (int jc=0; jc<n; jc+=nc) {
@@ -58,6 +59,17 @@ void matmul(vector<float> &A, vector<float> &B, vector<float> &C, int N, int siz
 //  }  
 }
 
+void printMatrix(vector<float> &M, int N) {
+   printf("printMatrix:\n");
+   for(int i=0; i<N; i++) {
+     printf("[");
+     for (int j=0; j<N; j++) {
+       printf(" %lf", M[N*i+j]);
+     }
+     printf("]\n");
+   }
+}
+
 int main(int argc, char** argv) {
   int size, rank;
   
@@ -65,16 +77,16 @@ int main(int argc, char** argv) {
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   
-//  const int N = 4;
+//  const int N = 2;
   const int N = 256;
   vector<float> A(N*N);
   vector<float> B(N*N);
   vector<float> C(N*N, 0);
-  vector<float> subA(N*N/size);
-  vector<float> subB(N*N/size);
+  vector<float> subA(N*N/size, 0);
+  vector<float> subB(N*N/size, 0);
   vector<float> subC(N*N/size, 0);
-  vector<float> subsubC(N*N/size/size, 0);
-  matmul(subA, subB, subC, N, size, 0);
+  vector<float> subsubC(N/size*N/size, 0);
+  matmul(subA, subB, subsubC, N, size);
 
   vector<float> recv(N*N/size);
 
@@ -100,29 +112,57 @@ int main(int argc, char** argv) {
   for(int irank=0; irank<size; irank++) {
     auto tic = chrono::steady_clock::now();
     offset = N/size*((rank+irank) % size);
-//    printf("%d time matmul started.\n", irank+1);
-    matmul(subA, subB, subC, N, size, offset);
-//    printf("%d time matmul completed.\n", irank+1);
-// assign
-// #pragma omp parallel for collapse(2)
-//    for (int i=0; i<N/size; i++)
-//      for (int j=0; j<N/size; j++) {
-//        subC[N*i+j+offset] += subsubC[N/size*i+j];
-//        printf("rank: %d, %d <- %d\n", rank, N*i+j+offset, N/size*i+j);
+//    if (!rank) {
+//      printf("subA [");
+//      for(int i=0; i<N*N/size; i++) {
+//        printf(" %lf", subA[i]);
 //      }
+//      printf("]\n");
+//    }
+    matmul(subA, subB, subsubC, N, size);
+// assign perhaps correct
+#pragma omp parallel for collapse(2)
+    for (int i=0; i<N/size; i++)
+      for (int j=0; j<N/size; j++) {
+        subC[N*i+j+offset] = subsubC[N/size*i+j];
+        subsubC[N/size*i+j] = 0;
+//        printf("rank: %d, %d <- %d\n", rank, N*i+j+offset, N/size*i+j);
+      }
     auto toc = chrono::steady_clock::now();
     comp_time += chrono::duration<double>(toc - tic).count();
     MPI_Request request[2];
     MPI_Isend(&subB[0], N*N/size, MPI_FLOAT, send_to, 0, MPI_COMM_WORLD, &request[0]);
     MPI_Irecv(&recv[0], N*N/size, MPI_FLOAT, recv_from, 0, MPI_COMM_WORLD, &request[1]);
     MPI_Waitall(2, request, MPI_STATUS_IGNORE);
+
     for (int i=0; i<N*N/size; i++)
       subB[i] = recv[i];
     tic = chrono::steady_clock::now();
     comm_time += chrono::duration<double>(tic - toc).count();
+//    if (!rank) {
+//      printf("subB [");
+//      for (int i=0; i<N*N/size; i++) {
+//        printf(" %lf", subB[i]);
+//      }
+//      printf("]\n");
+//      printf("subsubC [");
+//      for (int i=0; i<N/size*N/size; i++) {
+//        printf(" %lf", subsubC[i]);
+//      }
+//      printf("]\n");
+//    } 
   }
   MPI_Allgather(&subC[0], N*N/size, MPI_FLOAT, &C[0], N*N/size, MPI_FLOAT, MPI_COMM_WORLD);
-  
+ 
+//  if (!rank) { 
+//    printf("A\n");
+//    printMatrix(A, N);
+//    printf("B\n");
+//    printMatrix(B, N);
+//    printf("C\n");
+//    printMatrix(C, N);
+//  }
+
   for (int i=0; i<N; i++)
     for (int j=0; j<N; j++)
       for (int k=0; k<N; k++)
