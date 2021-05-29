@@ -5,14 +5,14 @@
 #include <chrono>
 using namespace std;
 
-void matmul(vector<float> &A, vector<float> &B, vector<float> &C, int N, int size) {
+void matmul(vector<float> &A, vector<float> &B, vector<float> &C, int N, int size, int offset) {
   const int m = N/size, n = N, k = N;
 // simple cache blocking
 #pragma omp parallel for
   for (int i=0; i<N/size; i++)
     for (int k=0; k<N; k++)
       for (int j=0; j<N/size; j++)
-        C[N/size*i+j] += A[N*i+k] * B[N/size*k+j];
+        C[N*i+j+offset] += A[N*i+k] * B[N/size*k+j];
 //  subC[N*i+j+offset] += subA[N*i+k] * subB[N/size*k+j];
 //#pragma omp parallel for collapse(2)
 //  for (int jc=0; jc<n; jc+=nc) {
@@ -65,6 +65,7 @@ int main(int argc, char** argv) {
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   
+//  const int N = 4;
   const int N = 256;
   vector<float> A(N*N);
   vector<float> B(N*N);
@@ -73,8 +74,7 @@ int main(int argc, char** argv) {
   vector<float> subB(N*N/size);
   vector<float> subC(N*N/size, 0);
   vector<float> subsubC(N*N/size/size, 0);
-  matmul(subA, subB, subsubC, N, size);  
-//  printf("first matmul completed.\n");
+  matmul(subA, subB, subC, N, size, 0);
 
   for (int i=0; i<N; i++) {
     for (int j=0; j<N; j++) {
@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
       B[N*i+j] = drand48();
     }
   }
-  
+
   int offset = N/size*rank;
   for (int i=0; i<N/size; i++)
     for (int j=0; j<N; j++)
@@ -99,13 +99,15 @@ int main(int argc, char** argv) {
     auto tic = chrono::steady_clock::now();
     offset = N/size*((rank+irank) % size);
 //    printf("%d time matmul started.\n", irank+1);
-    matmul(subA, subB, subsubC, N, size);
+    matmul(subA, subB, subC, N, size, offset);
 //    printf("%d time matmul completed.\n", irank+1);
 // assign
-#pragma omp parallel for collapse(2)
-    for (int i=0; i<N/size; i++)
-      for (int j=0; j<N/size; j++)
-        subC[N*i+j+offset] = subsubC[N*i+j];
+// #pragma omp parallel for collapse(2)
+//    for (int i=0; i<N/size; i++)
+//      for (int j=0; j<N/size; j++) {
+//        subC[N*i+j+offset] += subsubC[N/size*i+j];
+//        printf("rank: %d, %d <- %d\n", rank, N*i+j+offset, N/size*i+j);
+//      }
     auto toc = chrono::steady_clock::now();
     comp_time += chrono::duration<double>(toc - tic).count();
     MPI_Request request[2];
@@ -116,10 +118,12 @@ int main(int argc, char** argv) {
     comm_time += chrono::duration<double>(tic - toc).count();
   }
   MPI_Allgather(&subC[0], N*N/size, MPI_FLOAT, &C[0], N*N/size, MPI_FLOAT, MPI_COMM_WORLD);
+  
   for (int i=0; i<N; i++)
     for (int j=0; j<N; j++)
       for (int k=0; k<N; k++)
         C[N*i+j] -= A[N*i+k] * B[N*k+j];
+
   double err = 0;
   for (int i=0; i<N; i++)
     for (int j=0; j<N; j++)
