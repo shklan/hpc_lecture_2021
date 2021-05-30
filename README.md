@@ -5,7 +5,9 @@
 Nは1024にしてあります
 
 コンパイル：
+
 module load gcc cuda/11.2.146 openmpi
+
 mpicxx example.cpp -fopenmp -O3 -march=native
 
 
