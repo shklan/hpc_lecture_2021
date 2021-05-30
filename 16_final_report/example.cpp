@@ -18,16 +18,6 @@ void matmul(vector<float> &A, vector<float> &B, vector<float> &C, int N, int siz
    const int mc = m/4;
    const int nr = nc/2;
    const int mr = mc/2;
-// simple cache blocking
-//#pragma omp parallel for
-//  for (int i=0; i<N/size; i++)
-//    for (int k=0; k<N; k++)
-//      for (int j=0; j<N/size; j++) {
-//        // __m256 Avec = __mm256_load_ps();
-//        // __m256 Bvec = __mm256_load_ps();
-//        // __m256 Cvec = __mm256_load_ps();
-//        C[N/size*i+j] += A[N*i+k] * B[N/size*k+j];
-//      }
 
 #pragma omp parallel for
   for (int jc=0; jc<n; jc+=nc) {
