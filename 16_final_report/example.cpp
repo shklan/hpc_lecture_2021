@@ -3,60 +3,75 @@
 #include <cmath>
 #include <vector>
 #include <chrono>
+#include <immintrin.h>
+
 using namespace std;
 
 void matmul(vector<float> &A, vector<float> &B, vector<float> &C, int N, int size) {
-  const int m = N/size, n = N, k = N;
+// A: N/size * N
+// B: N * N/size
+// C: N/size * N/size
+   const int m = N/size, k = N, n = N/size;
+
+   const int kc = k/4;
+   const int nc = n/4;
+   const int mc = m/4;
+   const int nr = nc/2;
+   const int mr = mc/2;
 // simple cache blocking
+//#pragma omp parallel for
+//  for (int i=0; i<N/size; i++)
+//    for (int k=0; k<N; k++)
+//      for (int j=0; j<N/size; j++) {
+//        // __m256 Avec = __mm256_load_ps();
+//        // __m256 Bvec = __mm256_load_ps();
+//        // __m256 Cvec = __mm256_load_ps();
+//        C[N/size*i+j] += A[N*i+k] * B[N/size*k+j];
+//      }
+
 #pragma omp parallel for
-  for (int i=0; i<N/size; i++)
-    for (int k=0; k<N; k++)
-      for (int j=0; j<N/size; j++) {
-        C[N/size*i+j] += A[N*i+k] * B[N/size*k+j];
+  for (int jc=0; jc<n; jc+=nc) {
+    for (int pc=0; pc<k; pc+=kc) {
+      float Bc[kc*nc];
+      // pack into Bc
+      for (int p=0; p<kc; p++) {
+        for (int j=0; j<nc; j++) {
+          Bc[p*nc+j] = B[(p+pc)*n + (j+jc)];
+        }  
       }
-//  subC[N*i+j+offset] += subA[N*i+k] * subB[N/size*k+j];
-//#pragma omp parallel for collapse(2)
-//  for (int jc=0; jc<n; jc+=nc) {
-//    for (int pc=0; pc<k; pc+=kc) {
-//      float Bc[kc*nc];
-//      // pack into Bc
-//      for (int p=0; p<kc; p++) {
-//        for (int j=0; j<nc; j++) {
-//          Bc[p*nc+j] = B[p+pc][j+jc];
-//        }  
-//      }
-//      for (int ic=0; ic<m; ic+=mc) {
-//        for (int i=0; i<mc; i++) {
-//          // pack into Ac
-//          for (int p=0; p<kc; p++) {
-//            Ac[i*kc+p] = A[i+ic][p+pc];
-//          }
-//          // Initialize Cc
-//          for (int j=0; j<nc; j++) {
-//            Cc[i*nc+j] = 0;
-//          }
-//        }
-//        for (int jr=0; jr<nc; jr+=nr) {
-//          for (int ir=0; int ir<mc; ir+=mr) {
-//            // matmul
-//            for (int kr=0; kr<kc; kr++) {
-//              for (int i=ir; i<ir+mr; i++) {
-//                for (int j=jr; j<jr+nr; j++) {
-//                  Cc[i*nc+j] += Ac[i*kc+kr] * Bc[kr*nc+j];
-//                }
-//              }
-//            }
-//          }
-//        }
-//        // unpack from Cc
-//        for (int i=0; i<mc; i++) {
-//          for (int j=0; j<mc; j++) {
-//            C[i+ic][j+jc] += Cc[i*nc+j];
-//          }
-//        }
-//      }
-//    }
-//  }  
+      for (int ic=0; ic<m; ic+=mc) {
+        float Ac[mc*kc], Cc[mc*nc];
+        for (int i=0; i<mc; i++) {
+          // pack into Ac
+          for (int p=0; p<kc; p++) {
+            Ac[i*kc+p] = A[(i+ic)*k + (p+pc)];
+          }
+          // Initialize Cc
+          for (int j=0; j<nc; j++) {
+            Cc[i*nc+j] = 0;
+          }
+        }
+        for (int jr=0; jr<nc; jr+=nr) {
+          for (int ir=0; ir<mc; ir+=mr) {
+            // matmul
+            for (int kr=0; kr<kc; kr++) {
+              for (int i=ir; i<ir+mr; i++) {
+                for (int j=jr; j<jr+nr; j++) {
+                  Cc[i*nc+j] += Ac[i*kc+kr] * Bc[kr*nc+j];
+                }
+              }
+            }
+          }
+        }
+        // unpack from Cc
+        for (int i=0; i<mc; i++) {
+          for (int j=0; j<nc; j++) {
+            C[(i+ic)*n + (j+jc)] += Cc[i*nc+j];
+          }
+        }
+      }
+    }
+  }  
 }
 
 void printMatrix(vector<float> &M, int N) {
@@ -78,7 +93,7 @@ int main(int argc, char** argv) {
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   
 //  const int N = 2;
-  const int N = 256;
+  const int N = 1024;
   vector<float> A(N*N);
   vector<float> B(N*N);
   vector<float> C(N*N, 0);
@@ -121,7 +136,6 @@ int main(int argc, char** argv) {
 //    }
     matmul(subA, subB, subsubC, N, size);
 // assign perhaps correct
-#pragma omp parallel for collapse(2)
     for (int i=0; i<N/size; i++)
       for (int j=0; j<N/size; j++) {
         subC[N*i+j+offset] = subsubC[N/size*i+j];
