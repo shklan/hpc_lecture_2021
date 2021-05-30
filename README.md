@@ -6,10 +6,11 @@ Nは1024にしてあります
 
 コンパイル：
 
-module load gcc cuda/11.2.146 openmpi
+module load gcc/8.3.0 cuda/11.2.146 openmpi
 
 mpicxx example.cpp -fopenmp -O3 -march=native
 
+nvcc cuda.cu -lmpi -Xcompiler "-O3 -fopenmp"
 
 |          | Topic                                | Sample code               |
 | -------- | ------------------------------------ | ------------------------- |
