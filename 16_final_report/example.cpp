@@ -132,20 +132,12 @@ int main(int argc, char** argv) {
   for(int irank=0; irank<size; irank++) {
     auto tic = chrono::steady_clock::now();
     offset = N/size*((rank+irank) % size);
-//    if (!rank) {
-//      printf("subA [");
-//      for(int i=0; i<N*N/size; i++) {
-//        printf(" %lf", subA[i]);
-//      }
-//      printf("]\n");
-//    }
     matmul(subA, subB, subsubC, N, size);
 // assign perhaps correct
     for (int i=0; i<N/size; i++)
       for (int j=0; j<N/size; j++) {
         subC[N*i+j+offset] = subsubC[N/size*i+j];
         subsubC[N/size*i+j] = 0;
-//        printf("rank: %d, %d <- %d\n", rank, N*i+j+offset, N/size*i+j);
       }
     auto toc = chrono::steady_clock::now();
     comp_time += chrono::duration<double>(toc - tic).count();
@@ -158,29 +150,8 @@ int main(int argc, char** argv) {
       subB[i] = recv[i];
     tic = chrono::steady_clock::now();
     comm_time += chrono::duration<double>(tic - toc).count();
-//    if (!rank) {
-//      printf("subB [");
-//      for (int i=0; i<N*N/size; i++) {
-//        printf(" %lf", subB[i]);
-//      }
-//      printf("]\n");
-//      printf("subsubC [");
-//      for (int i=0; i<N/size*N/size; i++) {
-//        printf(" %lf", subsubC[i]);
-//      }
-//      printf("]\n");
-//    } 
   }
   MPI_Allgather(&subC[0], N*N/size, MPI_FLOAT, &C[0], N*N/size, MPI_FLOAT, MPI_COMM_WORLD);
- 
-//  if (!rank) { 
-//    printf("A\n");
-//    printMatrix(A, N);
-//    printf("B\n");
-//    printMatrix(B, N);
-//    printf("C\n");
-//    printMatrix(C, N);
-//  }
 
   for (int i=0; i<N; i++)
     for (int j=0; j<N; j++)
