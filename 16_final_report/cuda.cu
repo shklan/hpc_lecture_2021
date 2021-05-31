@@ -5,16 +5,21 @@
 #include <chrono>
 using namespace std;
 
+#define M 1024
 
 __global__ void matmul(float *A, float *B, float *C, int N, int size) {
-  int i = blockIdx.x;
-  int j = threadIdx.x;
+  int Nc = N/size;
+//  int i = blockIdx.x
+//  int j = threadIdx.x
+  int raw_index = blockIdx.x * blockDim.x + threadIdx.x;
+  int i = raw_index / Nc;
+  int j = raw_index % Nc;
   float sum = 0;
-  // 
+
   for (int k=0; k<N; k++) {
     sum += A[N*i+k] * B[N/size*k+j];
   }
-  C[N*i+j] = sum;
+  C[Nc*i+j] = sum;
 }
 
 void cudaCheckError() {
@@ -68,14 +73,14 @@ int main(int argc, char** argv) {
   for(int irank=0; irank<size; irank++) {
     auto tic = chrono::steady_clock::now();
     offset = N/size*((rank+irank) % size);
-    matmul<<<Nc, Nc>>>(subA, subB, subsubC, N, size);
+    matmul<<<Nc*Nc/M, M>>>(subA, subB, subsubC, N, size);
     cudaCheckError();
     cudaDeviceSynchronize();
 #pragma omp parallel for collapse(2)
     for (int i=0; i<N/size; i++)
       for (int j=0; j<N/size; j++) {
-        subC[N*i+j+offset] = subsubC[N*i+j];
-        subsubC[N*i+j] = 0;
+        subC[N*i+j+offset] = subsubC[Nc*i+j];
+        subsubC[Nc*i+j] = 0;
       }
     auto toc = chrono::steady_clock::now();
     comp_time += chrono::duration<double>(toc - tic).count();
