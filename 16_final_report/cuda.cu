@@ -15,7 +15,8 @@ __global__ void matmul(float *A, float *B, float *C, int N, int size) {
   int i = raw_index / Nc;
   int j = raw_index % Nc;
   float sum = 0;
-
+  
+  if (raw_index >= Nc*Nc) return;
   for (int k=0; k<N; k++) {
     sum += A[N*i+k] * B[N/size*k+j];
   }
@@ -73,7 +74,7 @@ int main(int argc, char** argv) {
   for(int irank=0; irank<size; irank++) {
     auto tic = chrono::steady_clock::now();
     offset = N/size*((rank+irank) % size);
-    matmul<<<Nc*Nc/M, M>>>(subA, subB, subsubC, N, size);
+    matmul<<<(Nc*Nc-1)/M+1, M>>>(subA, subB, subsubC, N, size);
     cudaCheckError();
     cudaDeviceSynchronize();
 #pragma omp parallel for collapse(2)
