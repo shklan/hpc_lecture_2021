@@ -87,7 +87,6 @@ int main(int argc, char** argv) {
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   
-//  const int N = 2;
   const int N = 1024;
   vector<float> A(N*N);
   vector<float> B(N*N);
@@ -123,7 +122,8 @@ int main(int argc, char** argv) {
     auto tic = chrono::steady_clock::now();
     offset = N/size*((rank+irank) % size);
     matmul(subA, subB, subsubC, N, size);
-// assign perhaps correct
+// assign
+#pragma omp parallel for collapse(2)
     for (int i=0; i<N/size; i++)
       for (int j=0; j<N/size; j++) {
         subC[N*i+j+offset] = subsubC[N/size*i+j];

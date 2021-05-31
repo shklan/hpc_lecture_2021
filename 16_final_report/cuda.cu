@@ -9,8 +9,6 @@ using namespace std;
 
 __global__ void matmul(float *A, float *B, float *C, int N, int size) {
   int Nc = N/size;
-//  int i = blockIdx.x
-//  int j = threadIdx.x
   int raw_index = blockIdx.x * blockDim.x + threadIdx.x;
   int i = raw_index / Nc;
   int j = raw_index % Nc;
